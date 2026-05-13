@@ -76,14 +76,16 @@ def main():
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
-    alpha = 0.1
+    alpha = 1
     for _ in range(100):
+        # create minibatch
+        idx = torch.randint(0, X.shape[0], (32,))
         # one-hot encoding
-        x_emb = C[X]    # high dimension tensor index, shape: X.shape + C.shape.1
+        x_emb = C[X[idx]]    # high dimension tensor index, shape: X.shape + C.shape.1
         # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
         out = torch.tanh(x_emb.view(-1, block_size * embed_size) @ W_1 + b_1)
         logits = out @ W_2 + b_2 # batch_size, 27
-        loss = F.cross_entropy(logits, Y)   # fused kernel: efficent and numerical stability
+        loss = F.cross_entropy(logits, Y[idx])   # fused kernel: efficent and numerical stability
         for p in parameters:
             p.grad = None
         loss.backward()
