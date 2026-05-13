@@ -52,53 +52,45 @@ def main():
     stoi = { ch : i + 1 for i, ch in enumerate(chars) }
     stoi['.'] = 0
     itos = { i : ch for ch, i in stoi.items()}
-    xs, ys = [], []
+
+    block_size = 4  # use 3 characters to predict next one
+    embed_size = 2
+    hidden_size_1 = 100
+    X, Y = [], []
     for w in words:
-        for ch1, ch2 in zip(w, w[1:]):
-            idx1 = stoi[ch1]
-            idx2 = stoi[ch2]
-            xs.append(idx1) # input : first char index
-            ys.append(idx2) # label : second char index
-    
-    xs = torch.tensor(xs)
-    ys = torch.tensor(ys)
-    num = xs.nelement()
-    print(f"xs = {xs}\n ys = {ys.shape}")
-
-    # one-hot encoding
-    x_enc = F.one_hot(xs, num_classes=len(stoi)).float()    # shape : len(stoi)
-
-    alpha = 50
-    W = torch.randn([27, 27], requires_grad=True)
-    for _ in range(100):
-        # forward pass
-        logits = x_enc @ W # -> log count (why interpret as log count)
-        cnt = logits.exp()
-        probs = cnt / cnt.sum(1, keepdim=True)
-        index = torch.arange(num)
-        loss = -probs[index, ys].log().mean() + 0.01 * (W**2).mean() # regulization(similar as smoothing)
-        # clear grad
-        W.grad = None
-        loss.backward()
-        assert W.grad != None, "W gradient is None"
-        W.data += -alpha * W.grad
-        print(f"loss = {loss}")
-
-    # sample
+        context = [0] * block_size
+        w += '.'
+        for ch in w:
+            idx = stoi[ch]
+            X.append(context)
+            Y.append(idx)
+            context = context[1:] + [idx]
     g = torch.Generator().manual_seed(2147483647)
-    for _ in range(5):
-        out = ""
-        idx = 0
-        while True:
-            x_enc = F.one_hot(torch.tensor([idx]), num_classes=27).float()
-            logits = x_enc @ W
-            cnt = logits.exp()
-            probs = cnt / cnt.sum(1, keepdim=True)
-            sample_idx = torch.multinomial(probs, 1, replacement=True, generator=g).item()
-            if sample_idx == 0:
-                break
-            out += itos[sample_idx] # type: ignore
-        print(f"out = {out}")
+    X = torch.tensor(X)
+    Y = torch.tensor(Y)
+    C = torch.randn([27, embed_size], generator=g)
+    W_1 = torch.randn((block_size * embed_size, hidden_size_1), generator=g)
+    b_1 = torch.randn(hidden_size_1, generator=g)
+    W_2 = torch.randn(hidden_size_1, 27, generator=g)
+    b_2 = torch.randn(27, generator=g)
+    parameters = [W_1, b_1, W_2, b_2, C]
+    for p in parameters:
+        p.requires_grad = True
+    alpha = 0.1
+    for _ in range(100):
+        # one-hot encoding
+        x_emb = C[X]    # high dimension tensor index, shape: X.shape + C.shape.1
+        # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
+        out = torch.tanh(x_emb.view(-1, block_size * embed_size) @ W_1 + b_1)
+        logits = out @ W_2 + b_2 # batch_size, 27
+        loss = F.cross_entropy(logits, Y)   # fused kernel: efficent and numerical stability
+        for p in parameters:
+            p.grad = None
+        loss.backward()
+        for p in parameters:
+            assert p.grad != None, f"{p} grad is None"
+            p.data += -alpha * p.grad
+        print(f"loss = {loss}")
 
 
 if __name__ == "__main__":
