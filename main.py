@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 def base():
     # bi-gram use previous one char to predict next one
@@ -76,8 +77,12 @@ def main():
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
-    alpha = 1
-    for _ in range(100):
+    iter_num = 100
+    lre = torch.linspace(-3, 0, iter_num)
+    lrs = 10 ** lre
+
+    lri, lossi = [], []
+    for i in range(iter_num):
         # create minibatch
         idx = torch.randint(0, X.shape[0], (32,))
         # one-hot encoding
@@ -89,11 +94,15 @@ def main():
         for p in parameters:
             p.grad = None
         loss.backward()
+        lr = lrs[i]
         for p in parameters:
             assert p.grad != None, f"{p} grad is None"
-            p.data += -alpha * p.grad
-        print(f"loss = {loss}")
+            p.data += -lr * p.grad
+        lri.append(lre[i])
+        lossi.append(loss.item())
 
+    plt.plot(lri, lossi)
+    plt.show()
 
 if __name__ == "__main__":
     main()
