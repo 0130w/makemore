@@ -59,7 +59,6 @@ def main():
     chars = sorted(list(set("".join(words))))
     stoi = {ch: i + 1 for i, ch in enumerate(chars)}
     stoi["."] = 0
-    itos = {i: ch for ch, i in stoi.items()}
     embed_size = 2
     hidden_size_1 = 300
     block_size = 3
@@ -98,7 +97,7 @@ def main():
     iter_num = 10000
 
     # train
-    for i in range(iter_num):
+    for _ in range(iter_num):
         # create minibatch
         idx = torch.randint(0, X_tr.shape[0], (32,))
         # one-hot encoding
@@ -113,7 +112,7 @@ def main():
             p.grad = None
         loss.backward()
         for p in parameters:
-            assert p.grad != None, f"{p} grad is None"
+            assert p.grad is not None, f"{p} grad is None"
             p.data += -lr * p.grad  # need learning rate decay
 
     # evaluate loss on dev split
