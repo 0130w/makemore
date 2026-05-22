@@ -59,9 +59,10 @@ def main():
     chars = sorted(list(set("".join(words))))
     stoi = {ch: i + 1 for i, ch in enumerate(chars)}
     stoi["."] = 0
-    embed_size = 2
-    hidden_size_1 = 300
-    block_size = 3
+    embed_size = 10
+    hidden_size_1 = 200
+    block_size = 5
+    batch_size = 64
 
     def build_dataset(words):
         X, Y = [], []
@@ -93,13 +94,12 @@ def main():
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
-    lr = 0.1
-    iter_num = 10000
+    iter_num = 50000
 
     # train
-    for _ in range(iter_num):
+    for i in range(iter_num):
         # create minibatch
-        idx = torch.randint(0, X_tr.shape[0], (32,))
+        idx = torch.randint(0, X_tr.shape[0], (batch_size,))
         # one-hot encoding
         x_emb = C[X_tr[idx]]  # high dimension tensor index, shape: X.shape + C.shape.1
         # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
@@ -111,6 +111,7 @@ def main():
         for p in parameters:
             p.grad = None
         loss.backward()
+        lr = 0.1 if i < 10000 else 0.01
         for p in parameters:
             assert p.grad is not None, f"{p} grad is None"
             p.data += -lr * p.grad  # need learning rate decay
