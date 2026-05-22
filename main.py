@@ -62,7 +62,7 @@ def main():
     embed_size = 10
     hidden_size_1 = 200
     block_size = 5
-    batch_size = 64
+    batch_size = 32
 
     def build_dataset(words):
         X, Y = [], []
@@ -94,7 +94,14 @@ def main():
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
-    iter_num = 50000
+    iter_num = 1000
+
+    lr_samples, loss_samples = [], []
+    lr_start = 1e-4
+    lr_end = 10.0
+    # lr_start * (lr_factor ** iter_num) = lr_end
+    lr_factor = (lr_end / lr_start) ** (1 / iter_num)
+    lr = lr_start
 
     # train
     for i in range(iter_num):
@@ -111,10 +118,18 @@ def main():
         for p in parameters:
             p.grad = None
         loss.backward()
-        lr = 0.1 if i < 10000 else 0.01
         for p in parameters:
             assert p.grad is not None, f"{p} grad is None"
             p.data += -lr * p.grad  # need learning rate decay
+        lr_samples.append(lr)
+        loss_samples.append(loss.item())
+        lr = lr * lr_factor
+
+    plt.xscale("log")
+    plt.xlabel("lr")
+    plt.ylabel("loss")
+    plt.plot(lr_samples, loss_samples)
+    plt.show()
 
     # evaluate loss on dev split
     x_emb = C[X_dev]
