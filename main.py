@@ -59,9 +59,9 @@ def main():
     chars = sorted(list(set("".join(words))))
     stoi = {ch: i + 1 for i, ch in enumerate(chars)}
     stoi["."] = 0
-    embed_size = 10
-    hidden_size_1 = 200
-    block_size = 5
+    embed_size = 16
+    hidden_size_1 = 300
+    block_size = 8
     batch_size = 32
 
     def build_dataset(words):
@@ -87,21 +87,16 @@ def main():
     X_te, Y_te = build_dataset(words[n2:])
     g = torch.Generator().manual_seed(2147483647)
     C = torch.randn([27, embed_size], generator=g)
-    W_1 = torch.randn((block_size * embed_size, hidden_size_1), generator=g)
-    b_1 = torch.randn(hidden_size_1, generator=g)
-    W_2 = torch.randn(hidden_size_1, 27, generator=g)
-    b_2 = torch.randn(27, generator=g)
+    W_1 = torch.randn((block_size * embed_size, hidden_size_1), generator=g) * 0.2
+    b_1 = torch.zeros(hidden_size_1)
+    W_2 = torch.randn(hidden_size_1, 27, generator=g) * 0.01
+    b_2 = torch.zeros(27)
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
-    iter_num = 1000
+    iter_num = 50000
 
-    lr_samples, loss_samples = [], []
-    lr_start = 1e-4
-    lr_end = 10.0
-    # lr_start * (lr_factor ** iter_num) = lr_end
-    lr_factor = (lr_end / lr_start) ** (1 / iter_num)
-    lr = lr_start
+    i_samples, loss_samples = [], []
 
     # train
     for i in range(iter_num):
@@ -118,17 +113,31 @@ def main():
         for p in parameters:
             p.grad = None
         loss.backward()
+        lr = 0.1 if i < 1000 else 0.01
         for p in parameters:
             assert p.grad is not None, f"{p} grad is None"
             p.data += -lr * p.grad  # need learning rate decay
-        lr_samples.append(lr)
+        i_samples.append(i)
         loss_samples.append(loss.item())
-        lr = lr * lr_factor
 
-    plt.xscale("log")
-    plt.xlabel("lr")
-    plt.ylabel("loss")
-    plt.plot(lr_samples, loss_samples)
+    loss_tensor = torch.tensor(loss_samples)
+    smooth_loss = loss_tensor.view(-1, 200).mean(1)
+    smooth_x = torch.arange(len(smooth_loss)) * 200
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title("Training Loss Curve")
+    plt.plot(
+        i_samples, loss_samples, label="Original Loss", color="lightgray", alpha=0.6
+    )
+    plt.plot(
+        smooth_x.numpy(),
+        smooth_loss.numpy(),
+        label="Smoothed Loss",
+        color="blue",
+        linewidth=2,
+    )
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.5)
     plt.show()
 
     # evaluate loss on dev split
