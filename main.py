@@ -1,7 +1,12 @@
+import sys
 import torch
 import random
+import logging
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 
 def base():
@@ -106,11 +111,18 @@ def main():
     # train
     for i in range(iter_num):
         # create minibatch
+        # idx shape: [batch_size]
         idx = torch.randint(0, X_tr.shape[0], (batch_size,))
         # one-hot encoding
+        # X_tr[idx] shape: [batch_size, block_size]
+        # C[X_tr[idx]] shape: [batch_size, block_size, embed_size]
+        # 其实用什么做索引，尺寸就会变成索引的那个矩阵的尺寸放前面，被索引的尺寸放后面
         x_emb = C[X_tr[idx]]  # high dimension tensor index, shape: X.shape + C.shape.1
         # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
-        out = torch.tanh(x_emb.view(-1, block_size * embed_size) @ W_1 + b_1)
+        # IDEA: want this activation be Gaussion
+        h_preact = x_emb.view(-1, block_size * embed_size) @ W_1 + b_1
+
+        out = torch.tanh(h_preact)
         logits = out @ W_2 + b_2  # batch_size, 27
         loss = F.cross_entropy(
             logits, Y_tr[idx]
