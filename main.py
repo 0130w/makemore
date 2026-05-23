@@ -87,7 +87,12 @@ def main():
     X_te, Y_te = build_dataset(words[n2:])
     g = torch.Generator().manual_seed(2147483647)
     C = torch.randn([27, embed_size], generator=g)
-    W_1 = torch.randn((block_size * embed_size, hidden_size_1), generator=g) * 0.2
+    gain_W_1 = 5 / 3
+    W_1 = (
+        torch.randn((block_size * embed_size, hidden_size_1), generator=g)
+        * gain_W_1
+        / (block_size * embed_size) ** 0.5
+    )
     b_1 = torch.zeros(hidden_size_1)
     W_2 = torch.randn(hidden_size_1, 27, generator=g) * 0.01
     b_2 = torch.zeros(27)
