@@ -101,6 +101,12 @@ def main():
     b_1 = torch.zeros(hidden_size_1)
     W_2 = torch.randn(hidden_size_1, 27, generator=g) * 0.01
     b_2 = torch.zeros(27)
+
+    b_gain = torch.ones(1, hidden_size_1)
+    b_mean_running = torch.ones(1, hidden_size_1)
+    b_std_running = torch.zeros(1, hidden_size_1)
+    b_bias = torch.zeros(1, hidden_size_1)
+
     parameters = [W_1, b_1, W_2, b_2, C]
     for p in parameters:
         p.requires_grad = True
@@ -121,7 +127,12 @@ def main():
         # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
         # IDEA: want this activation be Gaussion
         h_preact = x_emb.view(-1, block_size * embed_size) @ W_1 + b_1
-
+        h_mean = h_preact.mean(0, keepdim=True)
+        h_std = h_preact.std(0, keepdim=True)
+        h_preact = b_gain * (h_preact - h_mean) / h_std + b_bias
+        with torch.no_grad():  # used for inferring
+            b_mean_running = 0.999 * b_mean_running + 0.001 * h_mean
+            b_std_running = 0.999 * b_std_running + 0.001 * h_std
         out = torch.tanh(h_preact)
         logits = out @ W_2 + b_2  # batch_size, 27
         loss = F.cross_entropy(
