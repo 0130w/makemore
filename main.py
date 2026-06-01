@@ -112,7 +112,7 @@ def main():
     ]
     for layer in layers:
         if isinstance(layer, Linear):
-            layer.weight *= 8 / 3
+            layer.weight *= 5 / 3
     parameters = [C] + [p for layer in layers for p in layer.parameters()]
     for p in parameters:
         p.requires_grad = True
