@@ -25,14 +25,45 @@ class Linear:
 
 
 class BatchNorm1D:
-    def __init__(self):
-        pass
+    def __init__(self, dim, eps=1e-5, momentum=0.1):
+        self.eps = eps
+        self.momentum = momentum
+        self.training = True
+        self.gamma = torch.ones(dim)
+        self.beta = torch.zeros(dim)
+        self.running_mean = torch.zeros(dim)
+        self.running_var = torch.ones(dim)
 
-    def __call__(self):
-        pass
+    def __call__(self, x):
+        if self.training:
+            x_mean = x.mean(0, keepdim=True)
+            x_var = x.var(0, keepdim=True)
+        else:
+            x_mean = self.running_mean
+            x_var = self.running_var
+        x_hat = (x - x_mean) / torch.sqrt(x_var + self.eps)
+        self.out = x_hat * self.gamma + self.beta
+        if self.training:
+            with torch.no_grad():
+                self.running_mean = (
+                    1 - self.momentum
+                ) * self.running_mean + self.momentum * x_mean
+                self.running_var = (
+                    1 - self.momentum
+                ) * self.running_var + self.momentum * x_var
+        return self.out
 
     def parameters(self):
-        pass
+        return [self.gamma, self.beta]
+
+
+class Tanh:
+    def __call__(self, x):
+        self.out = torch.tanh(x)
+        return self.out
+
+    def parameters(self):
+        return []
 
 
 def main():
@@ -45,6 +76,7 @@ def main():
     hidden_size_1 = 300
     block_size = 8
     batch_size = 32
+    vocab_size = len(stoi)
 
     def build_dataset(words):
         X, Y = [], []
@@ -68,23 +100,17 @@ def main():
     X_dev, Y_dev = build_dataset(words[n1:n2])
     X_te, Y_te = build_dataset(words[n2:])
     g = torch.Generator().manual_seed(2147483647)
-    C = torch.randn([27, embed_size], generator=g)
-    gain_W_1 = 5 / 3
-    W_1 = (
-        torch.randn((block_size * embed_size, hidden_size_1), generator=g)
-        * gain_W_1
-        / (block_size * embed_size) ** 0.5
-    )
-    b_1 = torch.zeros(hidden_size_1)
-    W_2 = torch.randn(hidden_size_1, 27, generator=g) * 0.01
-    b_2 = torch.zeros(27)
-
-    b_gain = torch.ones(1, hidden_size_1)
-    b_mean_running = torch.ones(1, hidden_size_1)
-    b_std_running = torch.zeros(1, hidden_size_1)
-    b_bias = torch.zeros(1, hidden_size_1)
-
-    parameters = [W_1, b_1, W_2, b_2, C]
+    C = torch.randn([vocab_size, embed_size], generator=g)
+    layers = [
+        Linear(embed_size * block_size, hidden_size_1),
+        Tanh(),
+        Linear(hidden_size_1, hidden_size_1),
+        Tanh(),
+        Linear(hidden_size_1, hidden_size_1),
+        Tanh(),
+        Linear(hidden_size_1, vocab_size),
+    ]
+    parameters = [C] + [p for layer in layers for p in layer.parameters()]
     for p in parameters:
         p.requires_grad = True
     iter_num = 50000
@@ -93,28 +119,11 @@ def main():
 
     # train
     for i in range(iter_num):
-        # create minibatch
-        # idx shape: [batch_size]
         idx = torch.randint(0, X_tr.shape[0], (batch_size,))
-        # one-hot encoding
-        # X_tr[idx] shape: [batch_size, block_size]
-        # C[X_tr[idx]] shape: [batch_size, block_size, embed_size]
-        # 其实用什么做索引，尺寸就会变成索引的那个矩阵的尺寸放前面，被索引的尺寸放后面
-        x_emb = C[X_tr[idx]]  # high dimension tensor index, shape: X.shape + C.shape.1
-        # out = torch.cat(torch.unbind(x_emb, 1), dim=1)    # ineffient oper torch.cat
-        # IDEA: want this activation be Gaussion
-        h_preact = x_emb.view(-1, block_size * embed_size) @ W_1 + b_1
-        h_mean = h_preact.mean(0, keepdim=True)
-        h_std = h_preact.std(0, keepdim=True)
-        h_preact = b_gain * (h_preact - h_mean) / h_std + b_bias
-        with torch.no_grad():  # used for inferring
-            b_mean_running = 0.999 * b_mean_running + 0.001 * h_mean
-            b_std_running = 0.999 * b_std_running + 0.001 * h_std
-        out = torch.tanh(h_preact)
-        logits = out @ W_2 + b_2  # batch_size, 27
-        loss = F.cross_entropy(
-            logits, Y_tr[idx]
-        )  # fused kernel: efficent and numerical stability
+        x = C[X_tr[idx]].view(-1, embed_size * block_size)
+        for layer in layers:
+            x = layer(x)
+        loss = F.cross_entropy(x, Y_tr[idx])
         for p in parameters:
             p.grad = None
         loss.backward()
@@ -146,10 +155,10 @@ def main():
     plt.show()
 
     # evaluate loss on dev split
-    x_emb = C[X_dev]
-    out = torch.tanh(x_emb.view(-1, block_size * embed_size) @ W_1 + b_1)
-    logits = out @ W_2 + b_2
-    loss = F.cross_entropy(logits, Y_dev)
+    x = C[X_dev].view(-1, embed_size * block_size)
+    for layer in layers:
+        x = layer(x)
+    loss = F.cross_entropy(x, Y_dev)
     print(f"loss = {loss}")
 
 
