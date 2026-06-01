@@ -103,12 +103,16 @@ def main():
     C = torch.randn([vocab_size, embed_size], generator=g)
     layers = [
         Linear(embed_size * block_size, hidden_size_1),
+        BatchNorm1D(hidden_size_1),
         Tanh(),
         Linear(hidden_size_1, hidden_size_1),
+        BatchNorm1D(hidden_size_1),
         Tanh(),
         Linear(hidden_size_1, hidden_size_1),
+        BatchNorm1D(hidden_size_1),
         Tanh(),
         Linear(hidden_size_1, vocab_size),
+        BatchNorm1D(vocab_size),
     ]
     for layer in layers:
         if isinstance(layer, Linear):
