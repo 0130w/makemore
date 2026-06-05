@@ -1,9 +1,10 @@
-import sys
-import torch
-import random
 import logging
-import torch.nn.functional as F
+import random
+import sys
+
 import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -66,9 +67,28 @@ class Tanh:
         return []
 
 
+class Embedding:
+    def __init__(self, num_embeddings, embedding_dim):
+        self.weight = torch.randn((num_embeddings, embedding_dim))
+
+    def __call__(self, x):
+        return self.weight[x]
+
+    def parameters(self):
+        return [self.weight]
+
+
+class Flatten:
+    def __call__(self, x):
+        return x.view(x.shape[0], -1)  # x.shape[0] is batch_size
+
+    def parameters(self):
+        return []
+
+
 def main():
     words = open("names.txt", "r").read().lower().splitlines()
-    # create training set for bi-gram model
+    # create training set for n-gram model
     chars = sorted(list(set("".join(words))))
     stoi = {ch: i + 1 for i, ch in enumerate(chars)}
     stoi["."] = 0
@@ -99,9 +119,9 @@ def main():
     X_tr, Y_tr = build_dataset(words[:n1])
     X_dev, Y_dev = build_dataset(words[n1:n2])
     X_te, Y_te = build_dataset(words[n2:])
-    g = torch.Generator().manual_seed(2147483647)
-    C = torch.randn([vocab_size, embed_size], generator=g)
     layers = [
+        Embedding(vocab_size, embed_size),
+        Flatten(),
         Linear(embed_size * block_size, hidden_size_1),
         BatchNorm1D(hidden_size_1),
         Tanh(),
@@ -117,7 +137,7 @@ def main():
     for layer in layers:
         if isinstance(layer, Linear):
             layer.weight *= 5 / 3
-    parameters = [C] + [p for layer in layers for p in layer.parameters()]
+    parameters = [p for layer in layers for p in layer.parameters()]
     for p in parameters:
         p.requires_grad = True
     iter_num = 50000
@@ -127,10 +147,11 @@ def main():
     # train
     for i in range(iter_num):
         idx = torch.randint(0, X_tr.shape[0], (batch_size,))
-        x = C[X_tr[idx]].view(-1, embed_size * block_size)
+        X_batch, Y_batch = X_tr[idx], Y_tr[idx]
+        x = X_batch
         for layer in layers:
             x = layer(x)
-        loss = F.cross_entropy(x, Y_tr[idx])
+        loss = F.cross_entropy(x, Y_batch)
         for p in parameters:
             p.grad = None
         loss.backward()
@@ -162,7 +183,7 @@ def main():
     plt.show()
 
     # evaluate loss on dev split
-    x = C[X_dev].view(-1, embed_size * block_size)
+    x = X_dev
     for layer in layers:
         x = layer(x)
     loss = F.cross_entropy(x, Y_dev)
