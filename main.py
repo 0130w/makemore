@@ -38,8 +38,8 @@ class BatchNorm1D:
 
     def __call__(self, x):
         if self.training:
-            x_mean = x.mean(0, keepdim=True)
-            x_var = x.var(0, keepdim=True)
+            x_mean = x.mean((0, 1), keepdim=True)
+            x_var = x.var((0, 1), keepdim=True)
         else:
             x_mean = self.running_mean
             x_var = self.running_var
@@ -83,12 +83,18 @@ class Embedding:
         return [self.weight]
 
 
-class Flatten:
-    def __init__(self) -> None:
+class FlattenConsecutive:
+    def __init__(self, n) -> None:
         self.training = False
+        self.n = n
 
     def __call__(self, x):
-        return x.view(x.shape[0], -1)  # x.shape[0] is batch_size
+        b, t, c = x.shape  # batch_size, time_sequence, channel
+        x = x.view(b, t // self.n, c * self.n)
+        if x.shape[1] == 1:
+            x = x.squeeze(1)
+        self.out = x
+        return self.out
 
     def parameters(self):
         return []
@@ -118,7 +124,7 @@ def main():
     stoi = {ch: i + 1 for i, ch in enumerate(chars)}
     stoi["."] = 0
     embed_size = 16
-    hidden_size_1 = 300
+    hidden_size_1 = 68
     block_size = 8
     batch_size = 32
     vocab_size = len(stoi)
@@ -147,18 +153,19 @@ def main():
     model = Sequential(
         [
             Embedding(vocab_size, embed_size),
-            Flatten(),
-            Linear(embed_size * block_size, hidden_size_1),
+            FlattenConsecutive(2),
+            Linear(embed_size * 2, hidden_size_1),
             BatchNorm1D(hidden_size_1),
             Tanh(),
-            Linear(hidden_size_1, hidden_size_1),
+            FlattenConsecutive(2),
+            Linear(hidden_size_1 * 2, hidden_size_1),
             BatchNorm1D(hidden_size_1),
             Tanh(),
-            Linear(hidden_size_1, hidden_size_1),
+            FlattenConsecutive(2),
+            Linear(hidden_size_1 * 2, hidden_size_1),
             BatchNorm1D(hidden_size_1),
             Tanh(),
             Linear(hidden_size_1, vocab_size),
-            BatchNorm1D(vocab_size),
         ]
     )
     parameters = model.parameters()
